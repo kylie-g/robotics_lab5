@@ -9,6 +9,7 @@ from robot_vision_lectures.msg import SphereParams
 msg_received = False
 
 def get_points(XYZpoints):
+	#initialize ros_points and msg_received
 	global ros_points
 	global msg_received
 	ros_points = []
@@ -22,24 +23,36 @@ def get_points(XYZpoints):
 	#print(ros_points[0])
 	
 	#maybe move into one function?
-def getRaidus(ros_points):
+def getRadiusParams(ros_points):
+	#initialize A and B based on the example
 	B = []
 	A = []
+	#calculate each x, y, z value based on slide 21 to get matricies for further calucations
 	for p in ros_points:
 		B.append(math.pow(p[0], 2) + math.pow(p[1], 2) + math.pow(p[2], 2))
 		A.append([2*p[0], 2*p[1], 2*p[2], 1])
-	print(B)
-	print(A)
+		
+	#fit a and b to calc results
+	B_array = np.array(B).reshape(len(B), 1)
+	A_array = np.array(A).reshape(len(B), 4)
+	AB = np.linalg.lstsq(A_array, B_array, rcond=None)
+	
+	#calc radius using r = sqrt(P[3] + xc^2 + yx^2 + zc^2)
+	radius = np.sqrt(AB[0][3] + AB[0][0]**2 + AB[0][1]**2 + AB[0][2]**2)
+	
+	#set the sphereParams to xc, yc, zc, and radius
+	sphParams = SphereParams(float(AB[0][0]), float(AB[0][1]), float(AB[0][2]), radius)
+	return sphParams
 			
 
 if __name__ == '__main__':
 	#define node, subscribers, and publishers
 	rospy.init_node('sphere_fit', anonymous = True)
 	#define a subscriber to recieve the points
-	xyz_sub = rospy.Subscriber("/xyz_cropped_ball", XYZarray, get_points) 
+	pnt_sub = rospy.Subscriber("/xyz_cropped_ball", XYZarray, get_points) 
 	#get points
 	#define a publisher to publish images to /sphere_params task and therefore set the radius
-	xyz_pub = rospy.Publisher('/sphere_params', SphereParams, queue_size = 1)
+	pnt_pub = rospy.Publisher('/sphere_params', SphereParams, queue_size = 1)
 	#need to publish to xc, yx, zc, radius - must be calculated first
 	# set the loop frequency
 	rate = rospy.Rate(10)
@@ -48,7 +61,9 @@ if __name__ == '__main__':
 	while not rospy.is_shutdown():
 		# make sure we process if the camera has started streaming images
 		if msg_received:
-			# publish the 
-			img_pub.publish(img_msg)
+		#call get radius params to get params
+			param = getRadiusParams(ros_points)
+			# publish the param
+			pnt_pub.publish(param)
 		# pause until the next iteration			
 		rate.sleep()
